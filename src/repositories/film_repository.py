@@ -1,5 +1,5 @@
 from rapidfuzz import fuzz
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from src.models import Film, FilmAlias
@@ -50,7 +50,7 @@ class FilmRepository:
         films = self.search(query, limit=limit)
         return [
             {
-                "id": f.id,
+                "id": str(f.id),
                 "canonical_title": f.canonical_title,
                 "release_year": f.release_year,
             }
@@ -58,7 +58,10 @@ class FilmRepository:
         ]
 
     def get(self, film_id: str) -> Film | None:
-        return self.session.get(Film, film_id)
+        # DB `films.id` is UUID in Supabase; compare as text to avoid UUID/varchar mismatch
+        # when ORM metadata uses string ids.
+        stmt = select(Film).where(cast(Film.id, String) == str(film_id)).limit(1)
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def create_if_missing(self, title: str, release_year: int | None = None) -> Film:
         normalized = normalize_title(title)
