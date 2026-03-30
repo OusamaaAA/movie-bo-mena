@@ -1,0 +1,35 @@
+name: Daily Ingestion
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs every day at 03:00 UTC
+    - cron: "0 3 * * *"
+
+jobs:
+  run-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: daily-ingestion
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APP_ENV: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run daily ingestion job
+        run: |
+          python -m src.cli jobs daily

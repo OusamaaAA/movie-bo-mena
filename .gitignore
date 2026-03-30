@@ -1,0 +1,36 @@
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets/env
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Logs and runtime outputs
+*.log
+logs/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg
+pip-wheel-metadata/
+
+# Local data/artifacts that should not be versioned
+lookup_handoff_pack/
+tmp/
+temp/
+

@@ -1,0 +1,35 @@
+name: Weekly Ingestion
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs every Monday at 04:00 UTC
+    - cron: "0 4 * * 1"
+
+jobs:
+  run-weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: weekly-ingestion
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APP_ENV: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run weekly ingestion job
+        run: |
+          python -m src.cli jobs weekly
