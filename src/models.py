@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -13,7 +14,7 @@ class Base(DeclarativeBase):
 
 class Film(Base):
     __tablename__ = "films"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     canonical_title: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_title_ar: Mapped[str | None] = mapped_column(Text, nullable=True)
     normalized_title: Mapped[str] = mapped_column(Text, nullable=False, index=True)
@@ -26,8 +27,8 @@ class Film(Base):
 
 class FilmAlias(Base):
     __tablename__ = "film_aliases"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
     alias_text: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_alias: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     alias_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
@@ -41,7 +42,7 @@ class FilmAlias(Base):
 
 class Source(Base):
     __tablename__ = "sources"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     source_code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     source_family: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -52,8 +53,8 @@ class Source(Base):
 
 class SourceRun(Base):
     __tablename__ = "source_runs"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    source_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("sources.id"), nullable=True)
     run_type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -68,8 +69,8 @@ class SourceRun(Base):
 
 class RawEvidence(Base):
     __tablename__ = "raw_evidence"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    source_run_id: Mapped[str | None] = mapped_column(ForeignKey("source_runs.id"), nullable=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    source_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("source_runs.id"), nullable=True)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_entity_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -102,9 +103,9 @@ class RawEvidence(Base):
 class NormalizedEvidence(Base):
     __tablename__ = "normalized_evidence"
     __table_args__ = (UniqueConstraint("raw_evidence_id"),)
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    raw_evidence_id: Mapped[str] = mapped_column(ForeignKey("raw_evidence.id", ondelete="CASCADE"), nullable=False)
-    film_id: Mapped[str | None] = mapped_column(ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    raw_evidence_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("raw_evidence.id", ondelete="CASCADE"), nullable=False)
+    film_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     record_scope: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -129,8 +130,8 @@ class NormalizedEvidence(Base):
 
 class ReconciledEvidence(Base):
     __tablename__ = "reconciled_evidence"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
     source_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     record_scope: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -154,11 +155,11 @@ class ReconciledEvidence(Base):
 
 class ReviewQueue(Base):
     __tablename__ = "review_queue"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    raw_evidence_id: Mapped[str | None] = mapped_column(ForeignKey("raw_evidence.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    raw_evidence_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("raw_evidence.id", ondelete="SET NULL"), nullable=True)
     film_title_raw: Mapped[str] = mapped_column(Text, nullable=False)
     release_year_hint: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    candidate_film_id: Mapped[str | None] = mapped_column(ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
+    candidate_film_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
     candidate_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="open")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
@@ -169,8 +170,8 @@ class ReviewQueue(Base):
 
 class RatingsMetric(Base):
     __tablename__ = "ratings_metrics"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     rating_value: Mapped[Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
     vote_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -182,8 +183,8 @@ class RatingsMetric(Base):
 
 class MarketingInput(Base):
     __tablename__ = "marketing_inputs"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
     market_code: Mapped[str] = mapped_column(String(8), nullable=False)
     spend_local: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     spend_currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
@@ -197,8 +198,8 @@ class MarketingInput(Base):
 
 class OutcomeTarget(Base):
     __tablename__ = "outcome_targets"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=False)
     market_code: Mapped[str] = mapped_column(String(8), nullable=False)
     target_label: Mapped[str] = mapped_column(String(64), default="first_watch_target")
     target_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
@@ -214,7 +215,7 @@ class FilmPerformanceFeatures(Base):
     """One row per film: aggregates from reconciled_evidence + ratings_metrics (recomputed with film report)."""
 
     __tablename__ = "film_performance_features"
-    film_id: Mapped[str] = mapped_column(String(36), ForeignKey("films.id", ondelete="CASCADE"), primary_key=True)
+    film_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), primary_key=True)
 
     eg_opening_admissions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     eg_peak_admissions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
@@ -253,8 +254,8 @@ class FilmPerformanceFeatures(Base):
 class FilmInvestmentAnalysis(Base):
     __tablename__ = "film_investment_analysis"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    film_id: Mapped[str | None] = mapped_column(ForeignKey("films.id", ondelete="CASCADE"), nullable=True, index=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    film_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="CASCADE"), nullable=True, index=True)
     predicted_first_watch: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     suggested_marketing_spend: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     roi: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
@@ -267,7 +268,7 @@ class FilmInvestmentAnalysis(Base):
 
 class MarketReference(Base):
     __tablename__ = "market_reference"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     market_code: Mapped[str] = mapped_column(String(8), nullable=False)
     reference_type: Mapped[str] = mapped_column(String(64), nullable=False)
     value_num: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
@@ -279,7 +280,7 @@ class MarketReference(Base):
 
 class LookupJob(Base):
     __tablename__ = "lookup_jobs"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     release_year_hint: Mapped[int | None] = mapped_column(Integer, nullable=True)
     imdb_title_id: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -300,12 +301,12 @@ class LookupJob(Base):
     fast_matches_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    resolved_film_id: Mapped[str | None] = mapped_column(ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
+    resolved_film_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
 
 
 class BulkLookupBatch(Base):
     __tablename__ = "bulk_lookup_batches"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     status: Mapped[str] = mapped_column(String(16), default="running")  # running, paused, completed
     total_items: Mapped[int] = mapped_column(Integer, default=0)
     processed_items: Mapped[int] = mapped_column(Integer, default=0)
@@ -319,15 +320,15 @@ class BulkLookupBatch(Base):
 
 class BulkLookupItem(Base):
     __tablename__ = "bulk_lookup_items"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    batch_id: Mapped[str] = mapped_column(ForeignKey("bulk_lookup_batches.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    batch_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("bulk_lookup_batches.id", ondelete="CASCADE"), nullable=False, index=True)
     queue_index: Mapped[int] = mapped_column(Integer, nullable=False)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     release_year_hint: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued, running, completed, failed, retryable
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-    lookup_job_id: Mapped[str | None] = mapped_column(ForeignKey("lookup_jobs.id", ondelete="SET NULL"), nullable=True)
-    resolved_film_id: Mapped[str | None] = mapped_column(ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
+    lookup_job_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("lookup_jobs.id", ondelete="SET NULL"), nullable=True)
+    resolved_film_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("films.id", ondelete="SET NULL"), nullable=True)
     matched_title: Mapped[str | None] = mapped_column(Text, nullable=True)
     coverage_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     ratings_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
