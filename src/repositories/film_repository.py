@@ -32,17 +32,20 @@ class FilmRepository:
 
         # Re-rank with transliteration-aware cross normalization.
         q_cross = normalize_title_cross_language(query)
-        film_ids = [f.id for f in candidates]
+        film_ids = [str(f.id) for f in candidates]
         aliases = list(
-            self.session.execute(select(FilmAlias).where(FilmAlias.film_id.in_(film_ids))).scalars().all()
+            self.session.execute(
+                select(FilmAlias).where(cast(FilmAlias.film_id, String).in_(film_ids))
+            ).scalars().all()
         )
         best_score_by_film: dict[str, float] = {fid: 0.0 for fid in film_ids}
         for a in aliases:
             cand_cross = normalize_title_cross_language(a.alias_text)
             score = fuzz.ratio(q_cross, cand_cross) / 100.0
-            best_score_by_film[a.film_id] = max(best_score_by_film.get(a.film_id, 0.0), score)
+            aid = str(a.film_id)
+            best_score_by_film[aid] = max(best_score_by_film.get(aid, 0.0), score)
 
-        candidates.sort(key=lambda f: best_score_by_film.get(f.id, 0.0), reverse=True)
+        candidates.sort(key=lambda f: best_score_by_film.get(str(f.id), 0.0), reverse=True)
         return candidates[:limit]
 
     def search_rows(self, query: str, limit: int = 20) -> list[dict]:

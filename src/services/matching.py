@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.orm import Session
 
 from src.models import Film, FilmAlias, ReviewQueue
@@ -54,7 +54,8 @@ class TitleMatcher:
     def _get_film(self, film_id: str) -> Film | None:
         key = str(film_id)
         if key not in self._film_by_id:
-            self._film_by_id[key] = self.session.get(Film, film_id)
+            stmt = select(Film).where(cast(Film.id, String) == key).limit(1)
+            self._film_by_id[key] = self.session.execute(stmt).scalar_one_or_none()
         return self._film_by_id[key]
 
     def _short_source_entity_id(self, value: str | None) -> str | None:
@@ -84,7 +85,7 @@ class TitleMatcher:
         # A seed alias and a source_title for the same string must merge, not INSERT twice.
         existing = self.session.execute(
             select(FilmAlias).where(
-                FilmAlias.film_id == film_id,
+                cast(FilmAlias.film_id, String) == str(film_id),
                 FilmAlias.normalized_alias == normalized_alias,
             )
         ).scalar_one_or_none()

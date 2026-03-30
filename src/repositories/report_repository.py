@@ -2,7 +2,7 @@ from datetime import date
 import re
 
 from rapidfuzz import fuzz
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from src.models import (
@@ -37,31 +37,38 @@ class ReportRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @staticmethod
+    def _fid(film_id: str) -> str:
+        return str(film_id)
+
     def source_coverage(self, film_id: str) -> list[tuple[str, int]]:
+        fid = self._fid(film_id)
         stmt = (
             select(NormalizedEvidence.source_name, func.count(NormalizedEvidence.id))
-            .where(NormalizedEvidence.film_id == film_id)
+            .where(cast(NormalizedEvidence.film_id, String) == fid)
             .group_by(NormalizedEvidence.source_name)
             .order_by(func.count(NormalizedEvidence.id).desc())
         )
         return list(self.session.execute(stmt).all())
 
     def raw_by_source(self, film_id: str, source_name: str, limit: int = 100) -> list[RawEvidence]:
+        fid = self._fid(film_id)
         stmt = (
             select(RawEvidence)
             .join(NormalizedEvidence, NormalizedEvidence.raw_evidence_id == RawEvidence.id)
-            .where(NormalizedEvidence.film_id == film_id, RawEvidence.source_name == source_name)
+            .where(cast(NormalizedEvidence.film_id, String) == fid, RawEvidence.source_name == source_name)
             .order_by(RawEvidence.created_at.desc())
             .limit(limit)
         )
         return list(self.session.execute(stmt).scalars().all())
 
     def market_signals(self, film_id: str, limit: int = 200) -> list[RawEvidence]:
+        fid = self._fid(film_id)
         stmt = (
             select(RawEvidence)
             .join(NormalizedEvidence, NormalizedEvidence.raw_evidence_id == RawEvidence.id)
             .where(
-                NormalizedEvidence.film_id == film_id,
+                cast(NormalizedEvidence.film_id, String) == fid,
                 RawEvidence.record_scope != "title",
             )
             .order_by(RawEvidence.created_at.desc())
@@ -86,28 +93,32 @@ class ReportRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def reconciled(self, film_id: str, limit: int = 200) -> list[ReconciledEvidence]:
+        fid = self._fid(film_id)
         stmt = (
             select(ReconciledEvidence)
-            .where(ReconciledEvidence.film_id == film_id)
+            .where(cast(ReconciledEvidence.film_id, String) == fid)
             .order_by(ReconciledEvidence.period_start_date.desc())
             .limit(limit)
         )
         return list(self.session.execute(stmt).scalars().all())
 
     def latest_ratings(self, film_id: str) -> list[RatingsMetric]:
+        fid = self._fid(film_id)
         max_date = self.session.execute(
-            select(func.max(RatingsMetric.metric_date)).where(RatingsMetric.film_id == film_id)
+            select(func.max(RatingsMetric.metric_date)).where(cast(RatingsMetric.film_id, String) == fid)
         ).scalar_one_or_none()
         if not max_date:
             return []
-        stmt = select(RatingsMetric).where(RatingsMetric.film_id == film_id, RatingsMetric.metric_date == max_date)
+        stmt = select(RatingsMetric).where(cast(RatingsMetric.film_id, String) == fid, RatingsMetric.metric_date == max_date)
         return list(self.session.execute(stmt).scalars().all())
 
     def marketing_inputs(self, film_id: str) -> list[MarketingInput]:
-        return list(self.session.execute(select(MarketingInput).where(MarketingInput.film_id == film_id)).scalars().all())
+        fid = self._fid(film_id)
+        return list(self.session.execute(select(MarketingInput).where(cast(MarketingInput.film_id, String) == fid)).scalars().all())
 
     def outcome_targets(self, film_id: str) -> list[OutcomeTarget]:
-        return list(self.session.execute(select(OutcomeTarget).where(OutcomeTarget.film_id == film_id)).scalars().all())
+        fid = self._fid(film_id)
+        return list(self.session.execute(select(OutcomeTarget).where(cast(OutcomeTarget.film_id, String) == fid)).scalars().all())
 
     def open_review_items(self, limit: int = 200) -> list[ReviewQueue]:
         stmt = (
@@ -128,10 +139,11 @@ class ReportRepository:
         return list(self.session.execute(stmt).scalars().all())
 
     def raw_evidence_for_film(self, film_id: str, limit: int = 800) -> list[RawEvidence]:
+        fid = self._fid(film_id)
         stmt = (
             select(RawEvidence)
             .join(NormalizedEvidence, NormalizedEvidence.raw_evidence_id == RawEvidence.id)
-            .where(NormalizedEvidence.film_id == film_id)
+            .where(cast(NormalizedEvidence.film_id, String) == fid)
             .order_by(RawEvidence.created_at.desc())
             .limit(limit)
         )
