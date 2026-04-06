@@ -75,6 +75,79 @@ def source_label(source: str, granularity: str) -> str:
     return s
 
 
+def _src_lower(r: dict) -> str:
+    return (r.get("source") or "").strip().lower()
+
+
+def _is_filmyard_row(r: dict) -> bool:
+    return "filmyard" in _src_lower(r)
+
+
+def _is_elcinema_row(r: dict) -> bool:
+    s = _src_lower(r)
+    return "elcinema" in s or "el cinema" in s
+
+
+def _is_bom_row(r: dict) -> bool:
+    s = _src_lower(r)
+    return "box office mojo" in s or "mojo" in s
+
+
+def _eg_source_preference(eg_rows: list[dict]) -> str:
+    """filmyard | elcinema | bom | all"""
+    if not eg_rows:
+        return "all"
+    fy = [r for r in eg_rows if _is_filmyard_row(r)]
+    ec = [r for r in eg_rows if _is_elcinema_row(r)]
+    fy_t = sum_gross_in_ticket_currency(fy, "EG")
+    ec_t = sum_gross_in_ticket_currency(ec, "EG")
+    if fy and fy_t > ec_t:
+        return "filmyard"
+    if ec:
+        return "elcinema"
+    if any(_is_bom_row(r) for r in eg_rows):
+        return "bom"
+    return "all"
+
+
+def _filter_title_rows_by_source_policy(rows: list[dict], eg_pref: str) -> list[dict]:
+    """One canonical source per market: EG per _eg_source_preference; SA elCinema (else BOM); others BOM."""
+    out: list[dict] = []
+    for r in rows:
+        code = (r.get("country_code") or "").upper()
+        if code == "EG":
+            if eg_pref == "filmyard":
+                if _is_filmyard_row(r):
+                    out.append(r)
+            elif eg_pref == "elcinema":
+                if _is_elcinema_row(r):
+                    out.append(r)
+            elif eg_pref == "bom":
+                if _is_bom_row(r):
+                    out.append(r)
+            else:
+                out.append(r)
+            continue
+        if code == "SA":
+            sa_rows = [x for x in rows if (x.get("country_code") or "").upper() == "SA"]
+            if any(_is_elcinema_row(x) for x in sa_rows):
+                if _is_elcinema_row(r):
+                    out.append(r)
+            elif any(_is_bom_row(x) for x in sa_rows):
+                if _is_bom_row(r):
+                    out.append(r)
+            else:
+                out.append(r)
+            continue
+        mrows = [x for x in rows if (x.get("country_code") or "").upper() == code]
+        if any(_is_bom_row(x) for x in mrows):
+            if _is_bom_row(r):
+                out.append(r)
+        else:
+            out.append(r)
+    return out
+
+
 def _market_totals(rows: list[dict]) -> list[dict]:
     """Per-market totals in **ticket baseline** currency (BOM USD rows converted per market)."""
     by_code: dict[str, list[dict]] = defaultdict(list)
@@ -496,16 +569,38 @@ def _ticket_price(code: str) -> float | None:
     return prices.get(code.upper())
 
 
-# Show Filmyard Egypt section if we have data
-if filmyard_daily_rows:
+# ── market filter ─────────────────────────────────────────────────────────────
+# Filter out zero-gross and empty/invalid period_key reconciled rows
+title_rows_all = [
+    r for r in reconciled
+    if r.get("semantics") == "title_period_gross"
+    and r.get("period_key") not in ("lifetime", "", None)
+    and float(r.get("period_gross_local") or 0) > 0  # hide zero-gross records
+]
+all_codes = sorted({(r.get("country_code") or "") for r in title_rows_all if r.get("country_code")})
+all_market_labels = [market_name(c) for c in all_codes]
+code_to_label = {c: market_name(c) for c in all_codes}
+label_to_code = {v: k for k, v in code_to_label.items()}
+
+if all_codes:
+    selected_labels = st.multiselect("Markets to display", all_market_labels, default=all_market_labels)
+    selected_codes = {label_to_code[l] for l in selected_labels}
+else:
+    selected_codes = set()
+
+title_rows = [r for r in title_rows_all if (r.get("country_code") or "") in selected_codes]
+_eg_for_pref = [r for r in title_rows if (r.get("country_code") or "").upper() == "EG"]
+eg_source_preference = _eg_source_preference(_eg_for_pref)
+title_rows = _filter_title_rows_by_source_policy(title_rows, eg_source_preference)
+
+# Show Filmyard Egypt live metrics only when EG reconciled view prefers Filmyard over elCinema
+if filmyard_daily_rows and eg_source_preference == "filmyard":
     section_header("Filmyard — Egypt Live Data")
     st.caption("Direct from Filmyard box office tracker. Updates daily.")
 
-    # Latest day's snapshot
     latest_daily = sorted(filmyard_daily_rows, key=lambda r: period_key_sort_ordinal(str(r.get("period_key") or "")), reverse=True)
     if latest_daily:
         ld = latest_daily[0]
-        # Find cumulative total from any row that has it
         cumulative = next(
             (float(r["cumulative_gross_local"]) for r in sorted(filmyard_daily_rows, key=lambda r: period_key_sort_ordinal(str(r.get("period_key") or "")), reverse=True)
              if r.get("cumulative_gross_local") and float(r["cumulative_gross_local"]) > 0),
@@ -525,7 +620,6 @@ if filmyard_daily_rows:
                 st.caption(f"🎟 {int(float(daily_adm)):,} tickets today")
 
         with col2:
-            # Best weekly source — native weekly if available, else daily-agg
             fy_weekly = filmyard_weekly_native if filmyard_weekly_native else filmyard_weekly_agg
             latest_wk = sorted(fy_weekly, key=lambda r: period_key_sort_ordinal(str(r.get("period_key") or "")), reverse=True)
             if latest_wk:
@@ -559,26 +653,6 @@ if filmyard_daily_rows:
 
     st.markdown("")
 
-# ── market filter ─────────────────────────────────────────────────────────────
-# Filter out zero-gross and empty/invalid period_key reconciled rows
-title_rows_all = [
-    r for r in reconciled
-    if r.get("semantics") == "title_period_gross"
-    and r.get("period_key") not in ("lifetime", "", None)
-    and float(r.get("period_gross_local") or 0) > 0  # hide zero-gross records
-]
-all_codes = sorted({(r.get("country_code") or "") for r in title_rows_all if r.get("country_code")})
-all_market_labels = [market_name(c) for c in all_codes]
-code_to_label = {c: market_name(c) for c in all_codes}
-label_to_code = {v: k for k, v in code_to_label.items()}
-
-if all_codes:
-    selected_labels = st.multiselect("Markets to display", all_market_labels, default=all_market_labels)
-    selected_codes = {label_to_code[l] for l in selected_labels}
-else:
-    selected_codes = set()
-
-title_rows = [r for r in title_rows_all if (r.get("country_code") or "") in selected_codes]
 totals_with_adm: list[dict] = []
 display_rows: list[dict] = []
 chart_images_for_export: dict[str, bytes] = {}
@@ -645,35 +719,67 @@ if title_rows:
             else "Admissions"
         )
 
-        # Egypt: elCinema + Filmyard on same chart
+        # Egypt: one canonical source (matches shelter table policy)
         if is_eg:
             fy_weekly = filmyard_weekly_native if filmyard_weekly_native else filmyard_weekly_agg
             elcinema_map: dict[str, float] = {}
             filmyard_map: dict[str, float] = {}
+            bom_map: dict[str, float] = {}
             ordinal_map: dict[str, int] = {}
 
-            for r in title_rows:
-                if (r.get("country_code") or "").upper() != "EG":
-                    continue
-                pk = str(r.get("period_key") or "")
-                lbl = format_period_row(r)
-                v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
-                if v is None or v <= 0:
-                    continue
-                elcinema_map[lbl] = v
-                ordinal_map[lbl] = period_key_sort_ordinal(pk)
-
-            for r in fy_weekly:
-                pk = str(r.get("period_key") or "")
-                lbl = format_period(pk)
-                v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
-                if v is None or v <= 0:
-                    continue
-                filmyard_map[lbl] = v
-                ordinal_map.setdefault(lbl, period_key_sort_ordinal(pk))
+            if eg_source_preference == "filmyard":
+                for r in fy_weekly:
+                    pk = str(r.get("period_key") or "")
+                    lbl = format_period(pk)
+                    v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
+                    if v is None or v <= 0:
+                        continue
+                    filmyard_map[lbl] = v
+                    ordinal_map.setdefault(lbl, period_key_sort_ordinal(pk))
+            elif eg_source_preference == "elcinema":
+                for r in title_rows:
+                    if (r.get("country_code") or "").upper() != "EG":
+                        continue
+                    pk = str(r.get("period_key") or "")
+                    lbl = format_period_row(r)
+                    v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
+                    if v is None or v <= 0:
+                        continue
+                    elcinema_map[lbl] = v
+                    ordinal_map[lbl] = period_key_sort_ordinal(pk)
+            elif eg_source_preference == "bom":
+                for r in title_rows:
+                    if (r.get("country_code") or "").upper() != "EG":
+                        continue
+                    pk = str(r.get("period_key") or "")
+                    lbl = format_period_row(r)
+                    v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
+                    if v is None or v <= 0:
+                        continue
+                    bom_map[lbl] = v
+                    ordinal_map[lbl] = period_key_sort_ordinal(pk)
+            else:
+                for r in title_rows:
+                    if (r.get("country_code") or "").upper() != "EG":
+                        continue
+                    pk = str(r.get("period_key") or "")
+                    lbl = format_period_row(r)
+                    v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
+                    if v is None or v <= 0:
+                        continue
+                    elcinema_map[lbl] = v
+                    ordinal_map[lbl] = period_key_sort_ordinal(pk)
+                for r in fy_weekly:
+                    pk = str(r.get("period_key") or "")
+                    lbl = format_period(pk)
+                    v = _row_value_for_chart(r, "EG", metric, egypt_ticket_price)
+                    if v is None or v <= 0:
+                        continue
+                    filmyard_map[lbl] = v
+                    ordinal_map.setdefault(lbl, period_key_sort_ordinal(pk))
 
             all_labels = sorted(
-                set(elcinema_map) | set(filmyard_map),
+                set(elcinema_map) | set(filmyard_map) | set(bom_map),
                 key=lambda lbl: ordinal_map.get(lbl, 999999),
             )
 
@@ -690,6 +796,8 @@ if title_rows:
                         row["elCinema"] = elcinema_map[lbl]
                     if lbl in filmyard_map:
                         row[fy_col_name] = filmyard_map[lbl]
+                    if lbl in bom_map:
+                        row["Box Office Mojo"] = bom_map[lbl]
                     combined_rows.append(row)
                 st.markdown(f"**Egypt{curr_lbl}**")
                 combined_df = pd.DataFrame(combined_rows)
@@ -701,10 +809,11 @@ if title_rows:
                 if long_df.empty:
                     st.caption("No data to plot for this metric (try Gross, or check ticket prices for estimates).")
                 else:
+                    color_col = "source" if long_df["source"].nunique() > 1 else None
                     chart = _sorted_label_chart(
                         long_df,
                         "value",
-                        color_col="source",
+                        color_col=color_col,
                         height=220,
                         y_title=y_title,
                     )
@@ -736,8 +845,8 @@ if title_rows:
             if png:
                 chart_images_for_export[market_name(code)] = png
 
-    # ── Egypt ticket price insight ────────────────────────────────────────────
-    if egypt_ticket_price and "EG" in selected_codes:
+    # ── Egypt ticket price insight (Filmyard-derived; only when EG view is Filmyard-led)
+    if egypt_ticket_price and "EG" in selected_codes and eg_source_preference == "filmyard":
         section_divider()
         section_header("Egypt Ticket Price (Filmyard-derived)")
         eg_col1, eg_col2 = st.columns(2)
@@ -796,8 +905,8 @@ if title_rows:
                 "_is_cumulative": 0,
             })
 
-        # Add Filmyard daily rows explicitly for Egypt (cumulative rows only if not already present)
-        if filmyard_daily_rows and "EG" in selected_codes:
+        # Add Filmyard daily rows explicitly for Egypt when EG view is Filmyard-led
+        if filmyard_daily_rows and "EG" in selected_codes and eg_source_preference == "filmyard":
             existing_keys = {(r["Market"], r["Period"], r["Source"]) for r in detail_rows}
             for r in sorted(filmyard_daily_rows, key=lambda x: period_key_sort_ordinal(str(x.get("period_key") or ""))):
                 gross = float(r.get("period_gross_local") or 0)
