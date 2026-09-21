@@ -11,7 +11,13 @@ database_url = settings.database_url
 if database_url and database_url.startswith("postgresql+psycopg2://"):
     # Streamlit Cloud installs `psycopg` in this project.
     database_url = database_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
-engine = create_engine(database_url, future=True, pool_pre_ping=True)
+engine = create_engine(
+    database_url,
+    future=True,
+    pool_pre_ping=True,
+    # Supabase/PgBouncer can reuse a backend connection with psycopg's prepared names.
+    connect_args={"prepare_threshold": None},
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
