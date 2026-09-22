@@ -111,7 +111,7 @@ def _eg_source_preference(eg_rows: list[dict]) -> str:
 
 
 def _filter_title_rows_by_source_policy(rows: list[dict], eg_pref: str) -> list[dict]:
-    """One canonical source per market: EG per _eg_source_preference; SA elCinema (else BOM); others BOM."""
+    """One canonical source per market: EG per preference; SA and other markets prefer elCinema over BOM."""
     out: list[dict] = []
     for r in rows:
         code = (r.get("country_code") or "").upper()
@@ -140,7 +140,10 @@ def _filter_title_rows_by_source_policy(rows: list[dict], eg_pref: str) -> list[
                 out.append(r)
             continue
         mrows = [x for x in rows if (x.get("country_code") or "").upper() == code]
-        if any(_is_bom_row(x) for x in mrows):
+        if any(_is_elcinema_row(x) for x in mrows):
+            if _is_elcinema_row(r):
+                out.append(r)
+        elif any(_is_bom_row(x) for x in mrows):
             if _is_bom_row(r):
                 out.append(r)
         else:
